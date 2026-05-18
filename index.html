@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>LMS 영상 재생 검수 시스템</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --navy:      #1e2a3a;
+  --navy2:     #253447;
+  --navy3:     #2d4060;
+  --blue:      #3b82f6;
+  --blue-h:    #2563eb;
+  --green:     #22c55e;
+  --green-h:   #16a34a;
+  --red:       #ef4444;
+  --red-h:     #dc2626;
+  --orange:    #f97316;
+  --gray-bg:   #f1f5f9;
+  --gray-bd:   #e2e8f0;
+  --text:      #1e293b;
+  --text-sub:  #64748b;
+  --font:      "맑은 고딕", "Malgun Gothic", sans-serif;
+}
+
+body { font-family: var(--font); font-size: 13px; background: var(--gray-bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── 헤더 ── */
+.header { background: var(--navy); padding: 0 20px; height: 62px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-icon { font-size: 22px; }
+.header-title { color: #fff; font-size: 16px; font-weight: 700; line-height: 1.2; }
+.header-sub   { color: #94a3b8; font-size: 11px; margin-top: 2px; }
+.header-right { display: flex; gap: 8px; }
+.hbtn { background: var(--navy2); border: 1px solid #3d5278; color: #cbd5e1; font-family: var(--font); font-size: 12px; padding: 6px 14px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: background .15s; }
+.hbtn:hover { background: var(--navy3); color: #fff; }
+
+/* ── 탭 네비 ── */
+.tab-nav { background: var(--navy2); display: flex; padding: 0 20px; flex-shrink: 0; border-bottom: 1px solid #334155; }
+.tab-btn { color: #94a3b8; font-family: var(--font); font-size: 13px; background: none; border: none; padding: 0 18px; height: 44px; cursor: pointer; display: flex; align-items: center; gap: 6px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; white-space: nowrap; }
+.tab-btn:hover { color: #e2e8f0; }
+.tab-btn.active { color: #fff; border-bottom-color: var(--blue); font-weight: 600; }
+
+/* ── 탭 콘텐츠 ── */
+.tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+.tab-content.active { display: flex; }
+
+/* ── 툴바 ── */
+.toolbar { background: #fff; border-bottom: 1px solid var(--gray-bd); padding: 10px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.toolbar-group { display: flex; align-items: center; gap: 6px; }
+.toolbar-sep { width: 1px; height: 24px; background: var(--gray-bd); margin: 0 4px; }
+
+/* ── 폴더 입력 ── */
+.folder-row { background: #fff; border-bottom: 1px solid var(--gray-bd); padding: 8px 20px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.folder-label { font-size: 12px; color: var(--text-sub); white-space: nowrap; width: 70px; }
+.folder-input { flex: 1; border: 1px solid var(--gray-bd); border-radius: 4px; padding: 5px 10px; font-family: var(--font); font-size: 12px; color: var(--text); background: var(--gray-bg); }
+.folder-input:focus { outline: none; border-color: var(--blue); }
+
+/* ── 버튼 ── */
+.btn { font-family: var(--font); font-size: 12px; padding: 6px 14px; border-radius: 5px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; transition: background .15s, opacity .15s; white-space: nowrap; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary  { background: var(--blue);   color: #fff; }
+.btn-primary:hover:not(:disabled)  { background: var(--blue-h); }
+.btn-success  { background: var(--green);  color: #fff; }
+.btn-success:hover:not(:disabled)  { background: var(--green-h); }
+.btn-danger   { background: var(--red);    color: #fff; }
+.btn-danger:hover:not(:disabled)   { background: var(--red-h); }
+.btn-warning  { background: var(--orange); color: #fff; }
+.btn-warning:hover:not(:disabled)  { background: #ea6b0e; }
+.btn-ghost    { background: #f8fafc; color: var(--text); border: 1px solid var(--gray-bd); }
+.btn-ghost:hover:not(:disabled)    { background: var(--gray-bg); }
+
+/* ── 테이블 래퍼 ── */
+.table-wrap { flex: 1; overflow: auto; padding: 0 20px 20px; margin-top: 0; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+.data-table thead tr { background: var(--navy); color: #fff; }
+.data-table thead th { padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; white-space: nowrap; border-right: 1px solid var(--navy3); }
+.data-table thead th:last-child { border-right: none; }
+.data-table tbody tr { border-bottom: 1px solid var(--gray-bd); transition: background .1s; }
+.data-table tbody tr:hover { background: #f0f6ff; }
+.data-table tbody td { padding: 9px 12px; vertical-align: middle; }
+.data-table tbody tr.row-ok   { background: #f0fdf4; }
+.data-table tbody tr.row-err  { background: #fff1f2; }
+.data-table tbody tr.row-err:hover { background: #ffe4e6; }
+.data-table tbody tr.row-analyzing { background: #fefce8; }
+.data-table tbody tr.row-ok:hover  { background: #dcfce7; }
+
+/* 체크박스 컬럼 */
+.data-table .col-check { width: 36px; text-align: center; }
+.data-table .col-center { text-align: center; }
+
+/* ── 배지 ── */
+.badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.badge-ok  { background: #dcfce7; color: #166534; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-warn { background: #fef9c3; color: #854d0e; }
+
+/* ── 통계 카드 ── */
+.stat-bar { background: #fff; border-bottom: 1px solid var(--gray-bd); padding: 10px 20px; display: flex; gap: 20px; flex-shrink: 0; }
+.stat-card { display: flex; flex-direction: column; gap: 1px; }
+.stat-label { font-size: 11px; color: var(--text-sub); }
+.stat-value { font-size: 18px; font-weight: 700; color: var(--text); }
+.stat-value.green { color: #16a34a; }
+.stat-value.red   { color: #dc2626; }
+.stat-value.blue  { color: var(--blue); }
+
+/* ── 상태바 ── */
+.statusbar { background: var(--navy); color: #94a3b8; font-size: 11px; padding: 5px 20px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
+.statusbar .dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; display: inline-block; }
+.statusbar .dot.green { background: #22c55e; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── 빈 상태 ── */
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-sub); gap: 8px; padding: 40px; }
+.empty-state .empty-icon { font-size: 40px; opacity: .4; }
+.empty-state p { font-size: 13px; }
+
+/* ── 진행바 ── */
+.progress-wrap { background: #fff; border-bottom: 1px solid var(--gray-bd); padding: 6px 20px; display: none; flex-shrink: 0; }
+.progress-bar { height: 6px; background: var(--gray-bd); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--blue); border-radius: 3px; transition: width .3s; width: 0%; }
+.progress-text { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+
+/* ── 보고서 탭 카드 ── */
+.report-cards { display: flex; gap: 16px; padding: 20px; flex-wrap: wrap; flex-shrink: 0; }
+.rcard { background: #fff; border: 1px solid var(--gray-bd); border-radius: 8px; padding: 16px 20px; min-width: 160px; }
+.rcard-label { font-size: 11px; color: var(--text-sub); margin-bottom: 6px; }
+.rcard-value { font-size: 28px; font-weight: 700; }
+.rcard-value.blue  { color: var(--blue); }
+.rcard-value.green { color: #16a34a; }
+.rcard-value.red   { color: #dc2626; }
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+select.btn-ghost { padding: 5px 10px; }
+input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: var(--blue); }
+</style>
+</head>
+<body>
+
+<!-- ■ 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <span class="header-icon">🎬</span>
+    <div>
+      <div class="header-title">LMS 영상 재생 검수 시스템</div>
+      <div class="header-sub">이러닝 콘텐츠 개발팀 · FFmpeg 기반 영상 품질 자동 분석</div>
+    </div>
+  </div>
+  <div class="header-right">
+  </div>
+</div>
+
+<!-- ■ 탭 네비 -->
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('manual',this)">📋 수동 검수</button>
+  <button class="tab-btn" onclick="switchTab('url',this)">🔗 URL 검수</button>
+  <button class="tab-btn" onclick="switchTab('watch',this)">👁 자동 감시</button>
+  <button class="tab-btn" onclick="switchTab('report',this)">📊 보고서</button>
+</nav>
+
+
+<!-- ══════════════════════════════════════════
+     TAB 1: 수동 검수
+══════════════════════════════════════════ -->
+<div id="tab-manual" class="tab-content active">
+
+  <!-- 폴더 설정 -->
+  <div class="folder-row">
+    <span class="folder-label">입력 폴더</span>
+    <input id="m-input" class="folder-input" type="text" readonly placeholder="MP4 파일이 있는 폴더">
+    <button class="btn btn-ghost" onclick="selectFolder('m-input')">📁 선택</button>
+  </div>
+  <div class="folder-row">
+    <span class="folder-label">출력 폴더</span>
+    <input id="m-output" class="folder-input" type="text" readonly placeholder="변환 파일 저장 폴더">
+    <button class="btn btn-ghost" onclick="selectFolder('m-output')">📁 선택</button>
+  </div>
+
+  <!-- 툴바 -->
+  <div class="toolbar">
+    <button id="btn-scan" class="btn btn-primary" onclick="startScan()">🔍 스캔 시작</button>
+    <button id="btn-convert" class="btn btn-success" onclick="convertSelected()" disabled>⚙ 선택 파일 변환</button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="selectAll(true)">전체 선택</button>
+    <button class="btn btn-ghost" onclick="selectAll(false)">전체 해제</button>
+    <div class="toolbar-sep"></div>
+    <span id="m-sel-info" style="font-size:12px;color:var(--text-sub)">선택: 0개</span>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="exportTxt('manual')">📄 TXT 보고서</button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="openReport()">📋 수동 검수 Excel 보고서</button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="clearAll()">🗑 초기화</button>
+  </div>
+
+  <!-- 진행바 -->
+  <div id="m-progress-wrap" class="progress-wrap">
+    <div class="progress-bar"><div id="m-progress-fill" class="progress-fill"></div></div>
+    <div id="m-progress-text" class="progress-text">분석 중...</div>
+  </div>
+
+  <!-- 테이블 -->
+  <div class="table-wrap">
+    <table class="data-table" id="m-table">
+      <thead>
+        <tr>
+          <th class="col-check"><input type="checkbox" id="chk-all" onchange="selectAll(this.checked)"></th>
+          <th style="white-space:nowrap">감지시각</th>
+          <th>파일명</th>
+          <th class="col-center">코덱</th>
+          <th class="col-center">해상도</th>
+          <th class="col-center">FPS</th>
+          <th class="col-center">비트레이트</th>
+          <th class="col-center">CFR/VFR</th>
+          <th class="col-center">Faststart</th>
+          <th class="col-center">오디오</th>
+          <th class="col-center">타임스탬프</th>
+          <th>문제 항목</th>
+          <th class="col-center">판정</th>
+        </tr>
+      </thead>
+      <tbody id="m-tbody"></tbody>
+    </table>
+    <div id="m-empty" class="empty-state">
+      <span class="empty-icon">📂</span>
+      <p>입력 폴더를 선택하고 스캔을 시작하세요</p>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     TAB 2: URL 검수
+══════════════════════════════════════════ -->
+<div id="tab-url" class="tab-content">
+
+  <!-- URL 입력 -->
+  <div class="folder-row" style="gap:8px">
+    <span class="folder-label">CDN URL</span>
+    <input id="u-url" class="folder-input" type="text"
+      placeholder="https://fkz4vab0536.edge.naverncp.com/2026/10/과목코드/.../파일명.mp4"
+      style="font-family:monospace;font-size:12px">
+    <button class="btn btn-primary" onclick="checkUrl()">🔍 검수</button>
+    <button class="btn btn-ghost" onclick="clearUrlTab()">🗑 초기화</button>
+  </div>
+
+  <div style="padding:8px 20px;font-size:11px;color:var(--text-sub);background:#fff;border-bottom:1px solid var(--gray-bd)">
+    💡 LCMS에서 확인한 CDN 경로 앞에 <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">https://fkz4vab0536.edge.naverncp.com/</code> 를 붙여 입력하세요
+  </div>
+
+  <!-- 진행바 -->
+  <div id="u-progress-wrap" class="progress-wrap">
+    <div class="progress-bar"><div id="u-progress-fill" class="progress-fill" style="width:60%"></div></div>
+    <div id="u-progress-text" class="progress-text">분석 중...</div>
+  </div>
+
+  <!-- 결과 테이블 -->
+  <div class="table-wrap">
+    <table class="data-table" id="u-table">
+      <thead>
+        <tr>
+          <th style="white-space:nowrap">감지시각</th>
+          <th>파일명</th>
+          <th class="col-center">코덱</th>
+          <th class="col-center">해상도</th>
+          <th class="col-center">FPS</th>
+          <th class="col-center">비트레이트</th>
+          <th class="col-center">CFR/VFR</th>
+          <th class="col-center">Faststart</th>
+          <th class="col-center">오디오</th>
+          <th class="col-center">타임스탬프</th>
+          <th>문제 항목</th>
+          <th class="col-center">판정</th>
+        </tr>
+      </thead>
+      <tbody id="u-tbody"></tbody>
+    </table>
+    <div id="u-empty" class="empty-state">
+      <span class="empty-icon">🔗</span>
+      <p>CDN URL을 입력하고 검수 버튼을 누르세요</p>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     TAB 3: 자동 감시
+══════════════════════════════════════════ -->
+<div id="tab-watch" class="tab-content">
+
+  <!-- 폴더 설정 -->
+  <div class="folder-row">
+    <span class="folder-label">감시 폴더</span>
+    <input id="w-watch" class="folder-input" type="text" readonly placeholder="신규 MP4를 감시할 폴더">
+    <button class="btn btn-ghost" onclick="selectFolder('w-watch')">📁 선택</button>
+  </div>
+  <div class="folder-row">
+    <span class="folder-label">보고서 폴더</span>
+    <input id="w-report" class="folder-input" type="text" readonly placeholder="Excel 보고서 저장 폴더">
+    <button class="btn btn-ghost" onclick="selectFolder('w-report')">📁 선택</button>
+  </div>
+
+  <!-- 툴바 -->
+  <div class="toolbar">
+    <button id="btn-watch-start" class="btn btn-success" onclick="startWatch()">▶ 감시 시작</button>
+    <button id="btn-watch-stop"  class="btn btn-danger"  onclick="stopWatch()" disabled>⏹ 감시 중지</button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="selectWatchAll(true)">전체 선택</button>
+    <button class="btn btn-ghost" onclick="selectWatchAll(false)">전체 해제</button>
+    <div class="toolbar-sep"></div>
+    <span id="w-sel-info" style="font-size:12px;color:var(--text-sub)">선택: 0개</span>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="exportTxt('watch')">📄 TXT 보고서</button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="openReport()">👁 자동 감시 Excel 보고서</button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="clearAll()">🗑 초기화</button>
+  </div>
+
+  <!-- 통계 -->
+  <div class="stat-bar">
+    <div class="stat-card"><div class="stat-label">전체</div><div id="w-stat-total" class="stat-value blue">0</div></div>
+    <div class="stat-card"><div class="stat-label">정상</div><div id="w-stat-ok"    class="stat-value green">0</div></div>
+    <div class="stat-card"><div class="stat-label">문제</div><div id="w-stat-err"   class="stat-value red">0</div></div>
+  </div>
+
+  <!-- 테이블 -->
+  <div class="table-wrap">
+    <table class="data-table" id="w-table">
+      <thead>
+        <tr>
+          <th class="col-check"><input type="checkbox" id="w-chk-all" onchange="selectWatchAll(this.checked)"></th>
+          <th style="white-space:nowrap">감지시각</th>
+          <th>파일명</th>
+          <th class="col-center">코덱</th>
+          <th class="col-center">해상도</th>
+          <th class="col-center">FPS</th>
+          <th class="col-center">비트레이트</th>
+          <th class="col-center">CFR/VFR</th>
+          <th class="col-center">Faststart</th>
+          <th class="col-center">오디오</th>
+          <th class="col-center">타임스탬프</th>
+          <th>문제 항목</th>
+          <th class="col-center">판정</th>
+        </tr>
+      </thead>
+      <tbody id="w-tbody"></tbody>
+    </table>
+    <div id="w-empty" class="empty-state">
+      <span class="empty-icon">👁</span>
+      <p>감시 폴더를 설정하고 감시를 시작하세요</p>
+      <p style="font-size:11px">새 MP4 파일이 감지되면 자동으로 분석됩니다</p>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     TAB 3: 보고서
+══════════════════════════════════════════ -->
+<div id="tab-report" class="tab-content">
+  <div class="report-cards">
+    <div class="rcard">
+      <div class="rcard-label">전체 검수 파일</div>
+      <div id="r-total" class="rcard-value blue">0</div>
+    </div>
+    <div class="rcard">
+      <div class="rcard-label">정상 파일</div>
+      <div id="r-ok" class="rcard-value green">0</div>
+    </div>
+    <div class="rcard">
+      <div class="rcard-label">문제 파일</div>
+      <div id="r-err" class="rcard-value red">0</div>
+    </div>
+    <div class="rcard">
+      <div class="rcard-label">문제 비율</div>
+      <div id="r-rate" class="rcard-value red">0%</div>
+    </div>
+  </div>
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="openReport()">📊 통합 Excel 보고서</button>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" id="r-table">
+      <thead>
+        <tr>
+          <th style="white-space:nowrap">감지시각</th>
+          <th>파일명</th>
+          <th class="col-center">코덱</th>
+          <th class="col-center">해상도</th>
+          <th class="col-center">FPS</th>
+          <th class="col-center">비트레이트</th>
+          <th class="col-center">CFR/VFR</th>
+          <th class="col-center">Faststart</th>
+          <th class="col-center">오디오</th>
+          <th class="col-center">타임스탬프</th>
+          <th>문제 항목</th>
+          <th class="col-center">판정</th>
+        </tr>
+      </thead>
+      <tbody id="r-tbody"></tbody>
+    </table>
+    <div id="r-empty" class="empty-state">
+      <span class="empty-icon">📊</span>
+      <p>수동 검수 또는 자동 감시 결과가 여기에 누적됩니다</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ■ 상태바 -->
+<div class="statusbar">
+  <span class="dot" id="watch-dot"></span>
+  <span id="status-text">감시 중지됨 · 폴더를 설정하고 시작하세요</span>
+</div>
+
+
+<script>
+// ──────────────────────────────────────────────
+// 전역 상태
+// ──────────────────────────────────────────────
+let allResults  = [];   // 모든 결과 누적
+let manualCount = 0;    // 수동 스캔 총 파일 수
+let manualDone  = 0;    // 수동 스캔 완료 수
+let defaults    = {};
+let reportFile  = "";   // Excel 보고서 경로 (단일 파일)
+
+// ──────────────────────────────────────────────
+// 초기화
+// ──────────────────────────────────────────────
+window.addEventListener("pywebviewready", async () => {
+  defaults    = await pywebview.api.get_defaults();
+  reportFile  = defaults.report_file;
+  document.getElementById("m-input").value  = defaults.input;
+  document.getElementById("m-output").value = defaults.output;
+  document.getElementById("w-watch").value  = defaults.watch;
+  document.getElementById("w-report").value = defaults.report_dir;
+  setStatus("준비됨 · 폴더 확인 후 시작하세요", false);
+});
+
+// ──────────────────────────────────────────────
+// 탭 전환
+// ──────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  btn.classList.add("active");
+  if (name === "report") refreshReport();
+}
+
+// ──────────────────────────────────────────────
+// 폴더 선택
+// ──────────────────────────────────────────────
+async function selectFolder(inputId) {
+  const path = await pywebview.api.select_folder();
+  if (path) document.getElementById(inputId).value = path;
+}
+
+// ──────────────────────────────────────────────
+// 수동 스캔
+// ──────────────────────────────────────────────
+async function startScan() {
+  try {
+    const inputDir = document.getElementById("m-input").value.trim();
+    if (!inputDir) { alert("입력 폴더를 선택해주세요."); return; }
+
+    document.getElementById("m-tbody").innerHTML = "";
+    document.getElementById("m-empty").style.display = "none";
+    document.getElementById("btn-scan").disabled = true;
+    document.getElementById("btn-convert").disabled = true;
+    manualDone = 0;
+
+    const res = await pywebview.api.scan_folder(inputDir);
+    if (res.error) { alert(res.error); document.getElementById("btn-scan").disabled = false; return; }
+
+    manualCount = res.count;
+    showProgress("m", 0, manualCount, "분석 준비 중...");
+    setStatus(`스캔 중 · ${manualCount}개 파일`, false);
+  } catch(e) {
+    alert("스캔 오류: " + e.message);
+    document.getElementById("btn-scan").disabled = false;
+  }
+}
+
+async function convertSelected() {
+  const outputDir = document.getElementById("m-output").value.trim();
+  if (!outputDir) { alert("출력 폴더를 선택해주세요."); return; }
+
+  const checks  = document.querySelectorAll(".row-check:checked");
+  const paths   = Array.from(checks).map(c => c.dataset.path);
+  if (!paths.length) { alert("변환할 파일을 선택해주세요."); return; }
+
+  document.getElementById("btn-convert").disabled = true;
+  document.getElementById("btn-scan").disabled = true;
+  showProgress("m", 0, paths.length, "변환 준비 중...");
+
+  await pywebview.api.convert_files(paths, outputDir);
+}
+
+function selectAll(checked) {
+  document.querySelectorAll(".row-check").forEach(c => c.checked = checked);
+  document.getElementById("chk-all").checked = checked;
+  updateSelInfo();
+}
+
+function selectWatchAll(checked) {
+  document.querySelectorAll(".w-row-check").forEach(c => c.checked = checked);
+  document.getElementById("w-chk-all").checked = checked;
+  updateWatchSelInfo();
+}
+
+function updateWatchSelInfo() {
+  const n = document.querySelectorAll(".w-row-check:checked").length;
+  document.getElementById("w-sel-info").textContent = `선택: ${n}개`;
+}
+
+async function exportTxt(mode) {
+  let selectedPaths, selectedResults;
+
+  if (mode === 'manual') {
+    const checks = document.querySelectorAll("#m-tbody .row-check:checked");
+    if (!checks.length) { alert("TXT로 내보낼 파일을 선택해주세요."); return; }
+    selectedPaths   = new Set(Array.from(checks).map(c => c.dataset.path));
+    selectedResults = allResults.filter(r => selectedPaths.has(r.filepath));
+  } else {
+    const checks = document.querySelectorAll("#w-tbody .w-row-check:checked");
+    if (!checks.length) { alert("TXT로 내보낼 파일을 선택해주세요."); return; }
+    selectedPaths   = new Set(Array.from(checks).map(c => c.dataset.path));
+    selectedResults = allResults.filter(r => selectedPaths.has(r.filepath));
+  }
+
+  if (!selectedResults.length) { alert("선택된 결과를 찾을 수 없습니다."); return; }
+
+  const res = await pywebview.api.export_txt_report(selectedResults);
+  if (res.status === "ok") {
+    setStatus(`✅ TXT 보고서 저장됨: ${res.path}`, false);
+  } else if (res.status !== "cancelled") {
+    alert("TXT 저장 실패: " + (res.error || ""));
+  }
+}
+
+function updateSelInfo() {
+  const n = document.querySelectorAll(".row-check:checked").length;
+  document.getElementById("m-sel-info").textContent = `선택: ${n}개`;
+  document.getElementById("btn-convert").disabled = n === 0;
+}
+
+// ──────────────────────────────────────────────
+// URL 검수
+// ──────────────────────────────────────────────
+async function checkUrl() {
+  const url = document.getElementById("u-url").value.trim();
+  if (!url) { alert("URL을 입력해주세요."); return; }
+  document.getElementById("u-tbody").innerHTML = "";
+  document.getElementById("u-empty").style.display = "none";
+  const res = await pywebview.api.check_url(url);
+  if (res.error) { alert(res.error); }
+}
+
+function clearUrlTab() {
+  document.getElementById("u-url").value = "";
+  document.getElementById("u-tbody").innerHTML = "";
+  document.getElementById("u-empty").style.display = "flex";
+  document.getElementById("u-progress-wrap").style.display = "none";
+}
+
+// ──────────────────────────────────────────────
+// 자동 감시
+// ──────────────────────────────────────────────
+async function startWatch() {
+  try {
+    const watchDir  = document.getElementById("w-watch").value.trim();
+    const reportDir = document.getElementById("w-report").value.trim();
+    if (!watchDir) { alert("감시 폴더를 선택해주세요."); return; }
+
+    const res = await pywebview.api.start_watch(watchDir, reportDir);
+    if (res.error) { alert(res.error); return; }
+
+    document.getElementById("btn-watch-start").disabled = true;
+    document.getElementById("btn-watch-stop").disabled  = false;
+    document.getElementById("w-empty").style.display = "none";
+    document.getElementById("watch-dot").classList.add("green");
+    setStatus(`감시 중 · ${watchDir}`, true);
+  } catch(e) {
+    alert("감시 오류: " + e.message);
+  }
+}
+
+async function stopWatch() {
+  await pywebview.api.stop_watch();
+  document.getElementById("btn-watch-start").disabled = false;
+  document.getElementById("btn-watch-stop").disabled  = true;
+  document.getElementById("watch-dot").classList.remove("green");
+  setStatus("감시 중지됨", false);
+}
+
+// ──────────────────────────────────────────────
+// 보고서
+// ──────────────────────────────────────────────
+async function openReport() {
+  const res = await pywebview.api.open_report(reportFile);
+  if (res && res.error) {
+    alert("아직 저장된 보고서가 없습니다.\n파일을 분석하면 자동으로 생성됩니다.");
+  }
+}
+
+async function clearAll() {
+  if (!confirm("현황판을 초기화하시겠습니까?\n(Excel 보고서는 유지됩니다)")) return;
+  await pywebview.api.clear_results();
+  allResults = [];
+  document.getElementById("m-tbody").innerHTML = "";
+  document.getElementById("w-tbody").innerHTML = "";
+  document.getElementById("m-empty").style.display = "";
+  document.getElementById("w-empty").style.display = "";
+  hideProgress("m");
+  updateWatchStats(0, 0, 0);
+  refreshReport();
+  setStatus("초기화 완료", false);
+}
+
+function refreshReport() {
+  const tbody  = document.getElementById("r-tbody");
+  const empty  = document.getElementById("r-empty");
+  const total  = allResults.length;
+  const errors = allResults.filter(r => r.issues && r.issues.length > 0).length;
+  const ok     = total - errors;
+
+  document.getElementById("r-total").textContent = total;
+  document.getElementById("r-ok").textContent    = ok;
+  document.getElementById("r-err").textContent   = errors;
+  document.getElementById("r-rate").textContent  = total ? Math.round(errors/total*100) + "%" : "0%";
+
+  if (!total) { empty.style.display = ""; tbody.innerHTML = ""; return; }
+  empty.style.display = "none";
+  tbody.innerHTML = allResults.map(r => resultRowHtml(r)).join("");
+}
+
+// ──────────────────────────────────────────────
+// Python → JS 콜백 (Bridge 네임스페이스)
+// ──────────────────────────────────────────────
+const Bridge = {
+  onAnalyzing(fname, mode) {
+    if (mode === "manual") {
+      const row = `<tr class="row-analyzing" id="row-${CSS.escape(fname)}">
+        <td class="col-check"></td>
+        <td>${esc(fname)}</td>
+        <td colspan="6" style="color:#854d0e;text-align:center">분석 중...</td>
+      </tr>`;
+      document.getElementById("m-tbody").insertAdjacentHTML("beforeend", row);
+    }
+    if (mode === "url") {
+      document.getElementById("u-empty").style.display = "none";
+      document.getElementById("u-progress-wrap").style.display = "block";
+    }
+    if (mode === "watch") {
+      document.getElementById("w-empty").style.display = "none";
+    }
+    setStatus(`분석 중: ${fname}`, mode === "watch");
+  },
+
+  onResult(r, mode) {
+    allResults.push(r);
+    if (mode === "manual") {
+      manualDone++;
+      // 기존 "분석 중" 행 교체
+      const existing = document.getElementById("row-" + CSS.escape(r.filename));
+      const html = `<tr class="${r.issues.length ? 'row-err' : 'row-ok'}" id="row-${CSS.escape(r.filename)}">
+        <td class="col-check"><input type="checkbox" class="row-check" data-path="${esc(r.filepath)}" onchange="updateSelInfo()"></td>
+        <td style="font-size:11px;color:var(--text-sub);white-space:nowrap">${r.detected_at || "-"}</td>
+        <td>${esc(r.filename)}</td>
+        <td class="col-center">${esc((r.codec||"-").toUpperCase())}</td>
+        <td class="col-center">${r.width ? r.width+"×"+r.height : "-"}</td>
+        <td class="col-center">${r.fps ? r.fps.toFixed(1)+"fps" : "-"}</td>
+        <td class="col-center">${r.bitrate ? r.bitrate+"kbps" : "-"}</td>
+        <td class="col-center">${r.vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok")}</td>
+        <td class="col-center">${r.faststart ? badge("✅ 있음","ok") : badge("❌ 없음","err")}</td>
+        <td class="col-center">${r.audio_ok  ? badge("✅ 정상","ok") : badge("❌ 문제","err")}</td>
+        <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
+        <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
+        <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
+      </tr>`;
+      if (existing) existing.outerHTML = html;
+      else document.getElementById("m-tbody").insertAdjacentHTML("beforeend", html);
+      showProgress("m", manualDone, manualCount, `${manualDone} / ${manualCount} 분석 완료`);
+    }
+    if (mode === "url") {
+      const fs = r.faststart === null ? badge("확인불가","warn") : (r.faststart ? badge("✅ 있음","ok") : badge("❌ 없음","err"));
+      const html = `<tr class="${r.issues.length ? 'row-err' : 'row-ok'}">
+        <td style="font-size:11px;color:var(--text-sub);white-space:nowrap">${r.detected_at || "-"}</td>
+        <td title="${esc(r.filepath)}">${esc(r.filename)}</td>
+        <td class="col-center">${esc((r.codec||"-").toUpperCase())}</td>
+        <td class="col-center">${r.width ? r.width+"×"+r.height : "-"}</td>
+        <td class="col-center">${r.fps ? r.fps.toFixed(1)+"fps" : "-"}</td>
+        <td class="col-center">${r.bitrate ? r.bitrate+"kbps" : "-"}</td>
+        <td class="col-center">${r.vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok")}</td>
+        <td class="col-center">${fs}</td>
+        <td class="col-center">${r.audio_ok  ? badge("✅ 정상","ok") : badge("❌ 문제","err")}</td>
+        <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
+        <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
+        <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
+      </tr>`;
+      document.getElementById("u-tbody").insertAdjacentHTML("beforeend", html);
+      document.getElementById("u-progress-wrap").style.display = "none";
+    }
+    if (mode === "watch") {
+      document.getElementById("w-tbody").insertAdjacentHTML("afterbegin", resultRowHtml(r, true));
+    }
+  },
+
+  onScanDone() {
+    document.getElementById("btn-scan").disabled = false;
+    hideProgress("m");
+    const n    = allResults.length;
+    const errs = allResults.filter(r => r.issues.length > 0).length;
+    setStatus(`스캔 완료 · ${n}개 파일 · 문제 ${errs}개 · ✅ Excel 저장됨`, false);
+  },
+
+  onConverting(fname, cur, total) {
+    showProgress("m", cur - 1, total, `변환 중 (${cur}/${total}): ${fname}`);
+    setStatus(`변환 중 ${cur}/${total}: ${fname}`, false);
+  },
+
+  onConvertDone(total, outputDir) {
+    document.getElementById("btn-scan").disabled    = false;
+    document.getElementById("btn-convert").disabled = false;
+    hideProgress("m");
+    setStatus(`변환 완료 · ${total}개 → ${outputDir}`, false);
+    alert(`${total}개 파일 변환 완료!\n저장 위치: ${outputDir}`);
+  },
+
+  onStats(stats) {
+    updateWatchStats(stats.total, stats.ok, stats.problems);
+    setStatus(`감시 중 · 누적 ${stats.total}개 (정상 ${stats.ok} / 문제 ${stats.problems})`, stats.watching);
+  }
+};
+
+// ──────────────────────────────────────────────
+// 유틸
+// ──────────────────────────────────────────────
+function resultRowHtml(r, showCheckbox = false) {
+  const chkCell = showCheckbox
+    ? `<td class="col-check"><input type="checkbox" class="w-row-check" data-path="${esc(r.filepath)}" onchange="updateWatchSelInfo()"></td>`
+    : '';
+  return `<tr class="${r.issues.length ? 'row-err' : 'row-ok'}">
+    ${chkCell}
+    <td style="font-size:11px;color:var(--text-sub);white-space:nowrap">${r.detected_at || "-"}</td>
+    <td>${esc(r.filename)}</td>
+    <td class="col-center">${esc((r.codec||"-").toUpperCase())}</td>
+    <td class="col-center">${r.width ? r.width+"×"+r.height : "-"}</td>
+    <td class="col-center">${r.fps ? r.fps.toFixed(1)+"fps" : "-"}</td>
+    <td class="col-center">${r.bitrate ? r.bitrate+"kbps" : "-"}</td>
+    <td class="col-center">${r.vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok")}</td>
+    <td class="col-center">${r.faststart ? badge("✅ 있음","ok") : badge("❌ 없음","err")}</td>
+    <td class="col-center">${r.audio_ok  ? badge("✅ 정상","ok") : badge("❌ 문제","err")}</td>
+    <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
+    <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
+    <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
+  </tr>`;
+}
+
+function badge(text, type) {
+  return `<span class="badge badge-${type}">${text}</span>`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function showProgress(prefix, cur, total, text) {
+  const w = document.getElementById(prefix + "-progress-wrap");
+  const f = document.getElementById(prefix + "-progress-fill");
+  const t = document.getElementById(prefix + "-progress-text");
+  w.style.display = "block";
+  f.style.width   = total ? (cur / total * 100) + "%" : "0%";
+  t.textContent   = text;
+}
+
+function hideProgress(prefix) {
+  document.getElementById(prefix + "-progress-wrap").style.display = "none";
+  document.getElementById(prefix + "-progress-fill").style.width   = "0%";
+}
+
+function updateWatchStats(total, ok, err) {
+  document.getElementById("w-stat-total").textContent = total;
+  document.getElementById("w-stat-ok").textContent    = ok;
+  document.getElementById("w-stat-err").textContent   = err;
+}
+
+function setStatus(text, watching) {
+  document.getElementById("status-text").textContent = text;
+  const dot = document.getElementById("watch-dot");
+  if (watching) dot.classList.add("green");
+  else dot.classList.remove("green");
+}
+
+// ── 긴급저장: Python 없이 JS만으로 TSV 파일 다운로드 ──
+function emergencySave() {
+  if (!allResults.length) { alert("저장할 데이터가 없습니다."); return; }
+  const BOM = "\uFEFF";
+  const header = ["감지일시","파일명","코덱","해상도","프레임레이트","비트레이트","Faststart","오디오","타임스탬프","판정","문제항목"].join("\t");
+  const rows = allResults.map(r => [
+    r.detected_at || "-",
+    r.filename || "-",
+    (r.codec || "-").toUpperCase(),
+    r.width ? r.width + "×" + r.height : "-",
+    (r.vfr ? "VFR" : "CFR") + " " + (r.fps || 0) + "fps",
+    r.bitrate ? r.bitrate + "kbps" : "-",
+    r.faststart ? "있음" : "없음",
+    r.audio_ok  ? "정상" : "문제",
+    r.dts_error ? "오류" : "정상",
+    (r.issues && r.issues.length) ? "문제" : "정상",
+    (r.issues && r.issues.length) ? r.issues.join(" / ") : "-"
+  ].join("\t")).join("\n");
+
+  const blob = new Blob([BOM + header + "\n" + rows], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const ts = new Date().toISOString().slice(0,19).replace(/[-T:]/g, "").slice(0,14);
+  a.download = "검수결과_긴급저장_" + ts + ".txt";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setStatus("긴급저장 완료 · " + allResults.length + "개 결과 저장됨", false);
+}
+</script>
+</body>
+</html>
