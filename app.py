@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import webview
-import os, sys, threading, time, queue, json
+import os, sys, threading, time, queue, json, urllib.request
 try:
     from dotenv import load_dotenv; load_dotenv()
 except ImportError:
@@ -63,17 +63,49 @@ class API:
         report_path = os.path.join(REPORT_DIR, REPORT_FILENAME)
 
         def run():
-            _window.evaluate_js(
-                f"Bridge.onAnalyzing({json.dumps(url.split('/')[-1])}, 'url')")
-            result = check_file(url)
-            self._results.append(result)
-            self._save_result(result, report_path, "URL검수")
-            _window.evaluate_js(
-                f"Bridge.onResult({json.dumps(result)}, 'url')")
-            _window.evaluate_js("Bridge.onScanDone()")
+            try:
+                fname = url.split("?")[0].rstrip("/").split("/")[-1]
+                _window.evaluate_js(
+                    f"Bridge.onAnalyzing({json.dumps(fname)}, 'url')")
+                result = check_file(url)
+                self._results.append(result)
+                self._save_result(result, report_path, "URL검수")
+                _window.evaluate_js(
+                    f"Bridge.onResult({json.dumps(result)}, 'url')")
+                _window.evaluate_js("Bridge.onScanDone()")
+            except Exception as e:
+                _window.evaluate_js(
+                    f"Bridge.onUrlError({json.dumps(str(e))})")
 
         threading.Thread(target=run, daemon=True).start()
         return {"status": "ok"}
+
+    # ── URL 파일 다운로드 ───────────────────────────────────────
+    def download_url(self, url):
+        url = url.strip()
+        save_dir = os.path.join(BASE_DIR, "입력영상")
+        os.makedirs(save_dir, exist_ok=True)
+        fname = url.split("?")[0].rstrip("/").split("/")[-1]
+        save_path = os.path.join(save_dir, fname)
+
+        def run():
+            try:
+                _window.evaluate_js(
+                    f"Bridge.onDownloadStart({json.dumps(fname)})")
+                def progress(block, block_size, total):
+                    if total > 0:
+                        pct = min(int(block * block_size * 100 / total), 100)
+                        _window.evaluate_js(
+                            f"Bridge.onDownloadProgress({pct}, {json.dumps(fname)})")
+                urllib.request.urlretrieve(url, save_path, reporthook=progress)
+                _window.evaluate_js(
+                    f"Bridge.onDownloadDone({json.dumps(fname)}, {json.dumps(save_path)})")
+            except Exception as e:
+                _window.evaluate_js(
+                    f"Bridge.onDownloadError({json.dumps(str(e))})")
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"status": "ok", "save_dir": save_dir}
 
     # ── 수동 스캔 ──────────────────────────────────────────────
     def scan_folder(self, input_dir):

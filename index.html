@@ -278,6 +278,7 @@ input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color:
           <th class="col-center">타임스탬프</th>
           <th>문제 항목</th>
           <th class="col-center">판정</th>
+          <th class="col-center">다운로드</th>
         </tr>
       </thead>
       <tbody id="u-tbody"></tbody>
@@ -559,12 +560,35 @@ function updateSelInfo() {
 // URL 검수
 // ──────────────────────────────────────────────
 async function checkUrl() {
-  const url = document.getElementById("u-url").value.trim();
-  if (!url) { alert("URL을 입력해주세요."); return; }
-  document.getElementById("u-tbody").innerHTML = "";
-  document.getElementById("u-empty").style.display = "none";
-  const res = await pywebview.api.check_url(url);
-  if (res.error) { alert(res.error); }
+  try {
+    const url = document.getElementById("u-url").value.trim();
+    if (!url) { alert("URL을 입력해주세요."); return; }
+    document.getElementById("u-tbody").innerHTML = "";
+    document.getElementById("u-empty").style.display = "none";
+    document.getElementById("u-progress-wrap").style.display = "block";
+    setStatus("URL 분석 중...", false);
+    const res = await pywebview.api.check_url(url);
+    if (res.error) {
+      document.getElementById("u-progress-wrap").style.display = "none";
+      document.getElementById("u-empty").style.display = "flex";
+      alert(res.error);
+    }
+  } catch(e) {
+    document.getElementById("u-progress-wrap").style.display = "none";
+    alert("오류: " + e.message);
+  }
+}
+
+async function downloadUrl(url, fname) {
+  const btn = document.getElementById("dl-btn-" + CSS.escape(fname));
+  if (btn) { btn.disabled = true; btn.textContent = "준비 중..."; }
+  try {
+    const res = await pywebview.api.download_url(url);
+    if (res.error) { alert(res.error); if (btn) { btn.disabled = false; btn.textContent = "⬇ 다운로드"; } }
+  } catch(e) {
+    alert("다운로드 오류: " + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = "⬇ 다운로드"; }
+  }
 }
 
 function clearUrlTab() {
@@ -695,7 +719,7 @@ const Bridge = {
     }
     if (mode === "url") {
       const fs = r.faststart === null ? badge("확인불가","warn") : (r.faststart ? badge("✅ 있음","ok") : badge("❌ 없음","err"));
-      const html = `<tr class="${r.issues.length ? 'row-err' : 'row-ok'}">
+      const html = `<tr class="${r.issues.length ? 'row-err' : 'row-ok'}" id="urow-${CSS.escape(r.filename)}">
         <td style="font-size:11px;color:var(--text-sub);white-space:nowrap">${r.detected_at || "-"}</td>
         <td title="${esc(r.filepath)}">${esc(r.filename)}</td>
         <td class="col-center">${esc((r.codec||"-").toUpperCase())}</td>
@@ -708,6 +732,13 @@ const Bridge = {
         <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
         <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
         <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
+        <td class="col-center">
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px"
+            id="dl-btn-${CSS.escape(r.filename)}"
+            data-url="${esc(r.filepath)}"
+            data-fname="${esc(r.filename)}"
+            onclick="downloadUrl(this.dataset.url, this.dataset.fname)">⬇ 다운로드</button>
+        </td>
       </tr>`;
       document.getElementById("u-tbody").insertAdjacentHTML("beforeend", html);
       document.getElementById("u-progress-wrap").style.display = "none";
@@ -741,6 +772,36 @@ const Bridge = {
   onStats(stats) {
     updateWatchStats(stats.total, stats.ok, stats.problems);
     setStatus(`감시 중 · 누적 ${stats.total}개 (정상 ${stats.ok} / 문제 ${stats.problems})`, stats.watching);
+  },
+
+  onUrlError(msg) {
+    document.getElementById("u-progress-wrap").style.display = "none";
+    document.getElementById("u-empty").style.display = "flex";
+    alert("URL 검수 오류: " + msg);
+    setStatus("URL 검수 실패", false);
+  },
+
+  onDownloadStart(fname) {
+    const btn = document.getElementById("dl-btn-" + CSS.escape(fname));
+    if (btn) { btn.disabled = true; btn.textContent = "⬇ 0%"; }
+    setStatus(`다운로드 중: ${fname}`, false);
+  },
+
+  onDownloadProgress(pct, fname) {
+    const btn = document.getElementById("dl-btn-" + CSS.escape(fname));
+    if (btn) btn.textContent = `⬇ ${pct}%`;
+  },
+
+  onDownloadDone(fname, savePath) {
+    const btn = document.getElementById("dl-btn-" + CSS.escape(fname));
+    if (btn) { btn.disabled = false; btn.textContent = "✅ 완료"; btn.style.color = "#16a34a"; }
+    setStatus(`✅ 다운로드 완료 → ${savePath}`, false);
+    alert(`다운로드 완료!\n저장 위치: ${savePath}`);
+  },
+
+  onDownloadError(msg) {
+    alert("다운로드 오류: " + msg);
+    setStatus("다운로드 실패", false);
   }
 };
 

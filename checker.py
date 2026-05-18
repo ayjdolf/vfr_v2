@@ -214,8 +214,8 @@ def check_file(filepath, settings=None):
         result["issues"].append(
             f"비트레이트 부족({result['bitrate']}kbps, 최소: {s['bitrate']}kbps)")
 
-    # ── DTS 역전 ──────────────────────────────────
-    if check_dts(filepath):
+    # ── DTS 역전 (URL은 네트워크 부하로 생략) ───────
+    if not _is_url and check_dts(filepath):
         result["dts_error"] = True
         result["issues"].append("DTS 역전")
 
