@@ -104,13 +104,14 @@ class TestCheckVideoStream:
         _check_video_stream(st, DEFAULT_SETTINGS, r)
         assert any("H.265" in i for i in r["issues"])
 
-    def test_time_base_error(self):
+    def test_time_base_90000_not_error(self):
+        """1/90000은 정상 인코더에서도 사용 → 단독으로 오류 판정 안 함"""
         st = {"codec_name": "h264", "width": 1920, "height": 1080,
               "r_frame_rate": "30/1", "avg_frame_rate": "30/1", "time_base": "1/90000"}
         r = self._result()
         _check_video_stream(st, DEFAULT_SETTINGS, r)
-        assert r["dts_error"] is True
-        assert any("time_base" in i for i in r["issues"])
+        assert r["dts_error"] is False
+        assert not any("time_base" in i for i in r["issues"])
 
 
 # ── _check_audio_stream ───────────────────────────────────────

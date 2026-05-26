@@ -164,9 +164,8 @@ def _check_video_stream(st, s, result):
         result["issues"].append(
             f"프레임레이트 불일치({a_fps:.2f}fps, 권장: {s['fps']}fps)")
 
-    if st.get("time_base", "") == "1/90000":
-        result["dts_error"] = True
-        result["issues"].append("time_base 오류(1/90000)")
+    # time_base 1/90000은 정상 인코더에서도 흔히 사용되는 값 →
+    # 단독으로는 오류 근거 불충분, 실제 DTS 역전 감지 시에만 처리
 
 
 def _check_audio_stream(st, s, result):
