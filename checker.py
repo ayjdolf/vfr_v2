@@ -18,6 +18,30 @@ def is_url(path):
     return isinstance(path, str) and path.startswith(("http://", "https://"))
 
 
+def _check_url_accessible(url):
+    """
+    URL 접근 가능 여부 사전 확인
+    반환값: (접근가능:bool, 오류메시지:str|None)
+    """
+    try:
+        req = urllib.request.Request(url, method="HEAD",
+                                     headers={"User-Agent": "ffprobe/6.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status == 200:
+                return True, None
+            return False, f"HTTP {resp.status}"
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False, "영상 없음"
+        if e.code == 403:
+            return False, "접근 권한 없음"
+        return False, f"HTTP 오류 ({e.code})"
+    except urllib.error.URLError as e:
+        return False, "접근 불가 (네트워크 오류)"
+    except Exception as e:
+        return False, "접근 불가 (네트워크 오류)"
+
+
 def _fetch_head_bytes(url, size=200000):
     """URL에서 앞부분만 Range 요청으로 읽어옴"""
     try:
@@ -229,12 +253,20 @@ def check_file(filepath, settings=None):
         "height":      0,
         "fps":         0.0,
         "bitrate":     0,
-        "vfr":         False,
-        "audio_ok":    True,
-        "faststart":   False,
-        "dts_error":   False,
+        "vfr":         None,   # None = 확인불가 (오류 시)
+        "audio_ok":    None,
+        "faststart":   None,
+        "dts_error":   None,
         "issues":      [],
     }
+
+    # ── URL 접근 가능 여부 사전 확인 ────────────────
+    if _is_url:
+        accessible, err_msg = _check_url_accessible(filepath)
+        if not accessible:
+            logger.warning("URL 접근 불가 [%s]: %s", filename, err_msg)
+            result["issues"].append(err_msg)
+            return result
 
     # ── ffprobe 실행 ────────────────────────────────
     cmd = [
@@ -250,12 +282,18 @@ def check_file(filepath, settings=None):
     except subprocess.CalledProcessError as e:
         msg = e.output.decode("utf-8", errors="ignore")[:60]
         logger.error("ffprobe CalledProcessError [%s]: %s", filename, msg)
-        result["issues"].append("ffprobe 오류: " + msg)
+        result["issues"].append("파일 손상 또는 읽기 오류")
         return result
     except Exception as e:
         logger.error("ffprobe 오류 [%s]: %s", filename, e)
-        result["issues"].append("ffprobe 오류: " + str(e)[:60])
+        result["issues"].append("파일 손상 또는 읽기 오류")
         return result
+
+    # ffprobe 성공 후 기본값 초기화
+    result["vfr"]       = False
+    result["audio_ok"]  = True
+    result["faststart"] = False
+    result["dts_error"] = False
 
     # ── 전체 비트레이트 ──────────────────────────────
     try:

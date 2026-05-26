@@ -743,10 +743,10 @@ const Bridge = {
         <td class="col-center">${r.width ? r.width+"×"+r.height : "-"}</td>
         <td class="col-center">${r.fps ? r.fps.toFixed(1)+"fps" : "-"}</td>
         <td class="col-center">${r.bitrate ? r.bitrate+"kbps" : "-"}</td>
-        <td class="col-center">${r.vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok")}</td>
-        <td class="col-center">${r.faststart ? badge("✅ 있음","ok") : badge("❌ 없음","err")}</td>
-        <td class="col-center">${r.audio_ok  ? badge("✅ 정상","ok") : badge("❌ 문제","err")}</td>
-        <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
+        <td class="col-center">${badgeVfr(r.vfr)}</td>
+        <td class="col-center">${badgeFaststart(r.faststart)}</td>
+        <td class="col-center">${badgeAudio(r.audio_ok)}</td>
+        <td class="col-center">${badgeDts(r.dts_error)}</td>
         <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
         <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
       </tr>`;
@@ -763,10 +763,10 @@ const Bridge = {
         <td class="col-center">${r.width ? r.width+"×"+r.height : "-"}</td>
         <td class="col-center">${r.fps ? r.fps.toFixed(1)+"fps" : "-"}</td>
         <td class="col-center">${r.bitrate ? r.bitrate+"kbps" : "-"}</td>
-        <td class="col-center">${r.vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok")}</td>
+        <td class="col-center">${badgeVfr(r.vfr)}</td>
         <td class="col-center">${fs}</td>
-        <td class="col-center">${r.audio_ok  ? badge("✅ 정상","ok") : badge("❌ 문제","err")}</td>
-        <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
+        <td class="col-center">${badgeAudio(r.audio_ok)}</td>
+        <td class="col-center">${badgeDts(r.dts_error)}</td>
         <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
         <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
         <td class="col-center">
@@ -870,10 +870,10 @@ function resultRowHtml(r, showCheckbox = false) {
     <td class="col-center">${r.width ? r.width+"×"+r.height : "-"}</td>
     <td class="col-center">${r.fps ? r.fps.toFixed(1)+"fps" : "-"}</td>
     <td class="col-center">${r.bitrate ? r.bitrate+"kbps" : "-"}</td>
-    <td class="col-center">${r.vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok")}</td>
-    <td class="col-center">${r.faststart ? badge("✅ 있음","ok") : badge("❌ 없음","err")}</td>
-    <td class="col-center">${r.audio_ok  ? badge("✅ 정상","ok") : badge("❌ 문제","err")}</td>
-    <td class="col-center">${r.dts_error ? badge("❌ 오류","err") : badge("✅ 정상","ok")}</td>
+    <td class="col-center">${badgeVfr(r.vfr)}</td>
+    <td class="col-center">${badgeFaststart(r.faststart)}</td>
+    <td class="col-center">${badgeAudio(r.audio_ok)}</td>
+    <td class="col-center">${badgeDts(r.dts_error)}</td>
     <td style="font-size:12px;color:${r.issues.length ? "#991b1b" : "#166534"}">${r.issues.length ? r.issues.join(" / ") : "없음"}</td>
     <td class="col-center">${r.issues.length ? badge("문제","err") : badge("정상","ok")}</td>
   </tr>`;
@@ -881,6 +881,24 @@ function resultRowHtml(r, showCheckbox = false) {
 
 function badge(text, type) {
   return `<span class="badge badge-${type}">${text}</span>`;
+}
+
+// null = 확인불가 (ffprobe 오류 등), 값 있을 때만 배지 표시
+function badgeVfr(vfr) {
+  if (vfr === null || vfr === undefined) return '<span style="color:#94a3b8">-</span>';
+  return vfr ? badge("❌ VFR","err") : badge("✅ CFR","ok");
+}
+function badgeFaststart(fs) {
+  if (fs === null || fs === undefined) return '<span style="color:#94a3b8">-</span>';
+  return fs ? badge("✅ 있음","ok") : badge("❌ 없음","err");
+}
+function badgeAudio(ok) {
+  if (ok === null || ok === undefined) return '<span style="color:#94a3b8">-</span>';
+  return ok ? badge("✅ 정상","ok") : badge("❌ 문제","err");
+}
+function badgeDts(err) {
+  if (err === null || err === undefined) return '<span style="color:#94a3b8">-</span>';
+  return err ? badge("❌ 오류","err") : badge("✅ 정상","ok");
 }
 
 function esc(s) {
