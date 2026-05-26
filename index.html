@@ -247,14 +247,16 @@ input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color:
   <div class="folder-row" style="gap:8px">
     <span class="folder-label">CDN URL</span>
     <input id="u-url" class="folder-input" type="text"
-      placeholder="https://fkz4vab0536.edge.naverncp.com/2026/10/과목코드/.../파일명.mp4"
-      style="font-family:monospace;font-size:12px">
+      value="https://fkz4vab0536.edge.naverncp.com/"
+      style="font-family:monospace;font-size:12px"
+      onclick="moveCursorToEnd(this)"
+      onfocus="moveCursorToEnd(this)">
     <button class="btn btn-primary" onclick="checkUrl()">🔍 검수</button>
     <button class="btn btn-ghost" onclick="clearUrlTab()">🗑 초기화</button>
   </div>
 
   <div style="padding:8px 20px;font-size:11px;color:var(--text-sub);background:#fff;border-bottom:1px solid var(--gray-bd)">
-    💡 LCMS에서 확인한 CDN 경로 앞에 <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">https://fkz4vab0536.edge.naverncp.com/</code> 를 붙여 입력하세요
+    💡 CDN 도메인이 기본 입력되어 있습니다. LCMS에서 확인한 경로(<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">2026/10/과목코드/.../파일명.mp4</code>)를 이어서 붙여넣으세요
   </div>
 
   <!-- 진행바 -->
@@ -627,7 +629,7 @@ async function downloadUrl(url, fname) {
 }
 
 function clearUrlTab() {
-  document.getElementById("u-url").value = "";
+  document.getElementById("u-url").value = "https://fkz4vab0536.edge.naverncp.com/";
   document.getElementById("u-tbody").innerHTML = "";
   document.getElementById("u-empty").style.display = "flex";
   document.getElementById("u-progress-wrap").style.display = "none";
@@ -910,6 +912,12 @@ function setStatus(text, watching) {
   const dot = document.getElementById("watch-dot");
   if (watching) dot.classList.add("green");
   else dot.classList.remove("green");
+}
+
+// ── URL 입력 커서 끝으로 이동 ──────────────────────────
+function moveCursorToEnd(el) {
+  const len = el.value.length;
+  setTimeout(() => { el.setSelectionRange(len, len); }, 0);
 }
 
 // ── 설정 모달 ──────────────────────────────────────────
