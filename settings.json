@@ -1,0 +1,13 @@
+{
+  "codec":        "h264",
+  "fps":          30,
+  "bitrate":      1000,
+  "min_width":    1280,
+  "min_height":   720,
+  "audio_sr":     48000,
+  "audio_ch":     2,
+  "conv_fps":     30,
+  "conv_bitrate": 1000,
+  "conv_preset":  "medium",
+  "conv_audio_br": 128
+}

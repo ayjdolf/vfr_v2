@@ -2,9 +2,16 @@
 """
 LMS 영상 검수 핵심 로직 (설정값 기반 검수 + 변환)
 """
-import subprocess, json, os, sys, urllib.request
+import subprocess, json, os, sys, urllib.request, logging
 from fractions import Fraction
 from datetime import datetime
+
+logger = logging.getLogger("vfr_v2")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
 def is_url(path):
@@ -19,7 +26,8 @@ def _fetch_head_bytes(url, size=200000):
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.read()
-    except Exception:
+    except Exception as e:
+        logger.warning("_fetch_head_bytes 실패 [%s]: %s", url, e)
         return None
 
 # Windows 전용 플래그 (Mac/Linux에서는 0으로 대체)
@@ -52,6 +60,27 @@ DEFAULT_SETTINGS = {
     "conv_preset":   "medium",
     "conv_audio_br": 128,    # 출력 오디오 비트레이트 (kbps)
 }
+
+_SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+
+def load_settings():
+    """settings.json 로드 → 없으면 DEFAULT_SETTINGS 반환"""
+    try:
+        with open(_SETTINGS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {**DEFAULT_SETTINGS, **data}
+    except Exception:
+        return dict(DEFAULT_SETTINGS)
+
+def save_settings(new_settings):
+    """변경된 설정을 settings.json에 저장"""
+    merged = {**DEFAULT_SETTINGS, **new_settings}
+    try:
+        with open(_SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 
 
 def get_bin(name):
@@ -97,41 +126,118 @@ def check_dts(filepath):
         for i in range(1, len(values)):
             if values[i] < values[i - 1]:
                 return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("check_dts 실패 [%s]: %s", filepath, e)
     return False
 
+
+# ── 검사 항목별 헬퍼 함수 ────────────────────────────────────
+
+def _check_video_stream(st, s, result):
+    """비디오 스트림 검사: 코덱 / 해상도 / VFR / time_base"""
+    codec  = st.get("codec_name", "")
+    width  = st.get("width", 0)
+    height = st.get("height", 0)
+    r_fps  = parse_rate(st.get("r_frame_rate",   "0/1"))
+    a_fps  = parse_rate(st.get("avg_frame_rate", "0/1"))
+
+    result["codec"]  = codec
+    result["width"]  = width
+    result["height"] = height
+    result["fps"]    = round(a_fps, 2) if a_fps else round(r_fps, 2)
+
+    if codec and codec != s["codec"]:
+        if codec == "hevc":
+            result["issues"].append("코덱 주의(H.265, 권장: H.264)")
+        else:
+            result["issues"].append(f"코덱 비권장({codec}, 권장: {s['codec']})")
+
+    if width and height:
+        if width < s["min_width"] or height < s["min_height"]:
+            result["issues"].append(
+                f"해상도 미달({width}×{height}, 최소: {s['min_width']}×{s['min_height']})")
+
+    if a_fps == 0 or (r_fps > 0 and abs(r_fps - a_fps) > 0.1):
+        result["vfr"] = True
+        result["issues"].append("VFR(가변 프레임레이트)")
+    elif a_fps > 0 and abs(a_fps - s["fps"]) > 0.5:
+        result["issues"].append(
+            f"프레임레이트 불일치({a_fps:.2f}fps, 권장: {s['fps']}fps)")
+
+    if st.get("time_base", "") == "1/90000":
+        result["dts_error"] = True
+        result["issues"].append("time_base 오류(1/90000)")
+
+
+def _check_audio_stream(st, s, result):
+    """오디오 스트림 검사: 샘플레이트 / 채널 수"""
+    sr = int(st.get("sample_rate", 0))
+    ch = int(st.get("channels", 0))
+    if sr != s["audio_sr"]:
+        result["audio_ok"] = False
+        result["issues"].append(f"오디오 샘플레이트 {sr}Hz(권장 {s['audio_sr']}Hz)")
+    if ch < s["audio_ch"]:
+        result["audio_ok"] = False
+        result["issues"].append("오디오 모노(스테레오 필요)")
+
+
+def _check_bitrate(result, s):
+    """비트레이트 기준 체크"""
+    if result["bitrate"] > 0 and result["bitrate"] < s["bitrate"]:
+        result["issues"].append(
+            f"비트레이트 부족({result['bitrate']}kbps, 최소: {s['bitrate']}kbps)")
+
+
+def _check_faststart(filepath, result, is_url_src):
+    """moov atom 위치 확인 (Faststart)"""
+    if is_url_src:
+        header = _fetch_head_bytes(filepath)
+        if header is None:
+            result["faststart"] = None   # 확인불가
+            return
+        header_data = header
+    else:
+        try:
+            with open(filepath, "rb") as f:
+                header_data = f.read(200000)
+        except Exception as e:
+            logger.warning("faststart 파일 읽기 오류 [%s]: %s", filepath, e)
+            result["issues"].append("파일 읽기 오류")
+            return
+
+    moov = header_data.find(b"moov")
+    mdat = header_data.find(b"mdat")
+    result["faststart"] = moov != -1 and (mdat == -1 or moov < mdat)
+    if not result["faststart"]:
+        result["issues"].append("faststart 없음(moov atom 위치 오류)")
+
+
+# ── 메인 검수 함수 ────────────────────────────────────────────
 
 def check_file(filepath, settings=None):
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     _is_url = is_url(filepath)
 
-    # URL이면 경로 마지막 세그먼트를 파일명으로 사용
-    if _is_url:
-        filename = filepath.split("?")[0].rstrip("/").split("/")[-1]
-    else:
-        filename = os.path.basename(filepath)
+    filename = (filepath.split("?")[0].rstrip("/").split("/")[-1]
+                if _is_url else os.path.basename(filepath))
 
     result = {
-        "detected_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "filename":     filename,
-        "filepath":     filepath,
-        # 비디오
-        "codec":        "",
-        "width":        0,
-        "height":       0,
-        "fps":          0.0,
-        "bitrate":      0,      # kbps
-        "vfr":          False,
-        # 오디오
-        "audio_ok":     True,
-        # 타임스탬프
-        "faststart":    False,
-        "dts_error":    False,
-        # 문제 목록
-        "issues":       []
+        "detected_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "filename":    filename,
+        "filepath":    filepath,
+        "codec":       "",
+        "width":       0,
+        "height":      0,
+        "fps":         0.0,
+        "bitrate":     0,
+        "vfr":         False,
+        "audio_ok":    True,
+        "faststart":   False,
+        "dts_error":   False,
+        "issues":      [],
     }
 
+    # ── ffprobe 실행 ────────────────────────────────
     cmd = [
         get_bin("ffprobe"), "-v", "quiet",
         "-print_format", "json",
@@ -139,109 +245,42 @@ def check_file(filepath, settings=None):
         filepath
     ]
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
-                                      creationflags=_NO_WINDOW)
+        out  = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
+                                       creationflags=_NO_WINDOW)
         data = json.loads(out)
     except subprocess.CalledProcessError as e:
-        result["issues"].append("ffprobe 오류: " + e.output.decode("utf-8", errors="ignore")[:60])
+        msg = e.output.decode("utf-8", errors="ignore")[:60]
+        logger.error("ffprobe CalledProcessError [%s]: %s", filename, msg)
+        result["issues"].append("ffprobe 오류: " + msg)
         return result
     except Exception as e:
+        logger.error("ffprobe 오류 [%s]: %s", filename, e)
         result["issues"].append("ffprobe 오류: " + str(e)[:60])
         return result
 
-    # ── 전체 비트레이트 (format 레벨) ──────────────
-    fmt = data.get("format", {})
+    # ── 전체 비트레이트 ──────────────────────────────
     try:
-        result["bitrate"] = int(fmt.get("bit_rate", 0)) // 1000
-    except Exception:
-        pass
+        result["bitrate"] = int(data.get("format", {}).get("bit_rate", 0)) // 1000
+    except Exception as e:
+        logger.warning("비트레이트 파싱 오류 [%s]: %s", filename, e)
 
-    # ── 스트림별 검사 ──────────────────────────────
+    # ── 스트림별 검사 ────────────────────────────────
     for st in data.get("streams", []):
-
         if st.get("codec_type") == "video":
-            codec  = st.get("codec_name", "")
-            width  = st.get("width", 0)
-            height = st.get("height", 0)
-            r_fps  = parse_rate(st.get("r_frame_rate",   "0/1"))
-            a_fps  = parse_rate(st.get("avg_frame_rate", "0/1"))
+            _check_video_stream(st, s, result)
+        elif st.get("codec_type") == "audio":
+            _check_audio_stream(st, s, result)
 
-            result["codec"]  = codec
-            result["width"]  = width
-            result["height"] = height
-            result["fps"]    = round(a_fps, 2) if a_fps else round(r_fps, 2)
+    # ── 비트레이트 / DTS / Faststart ─────────────────
+    _check_bitrate(result, s)
 
-            # 코덱 체크
-            if codec and codec != s["codec"]:
-                if codec == "hevc":
-                    result["issues"].append(f"코덱 주의(H.265, 권장: H.264)")
-                else:
-                    result["issues"].append(f"코덱 비권장({codec}, 권장: {s['codec']})")
-
-            # 해상도 체크
-            if width and height:
-                if width < s["min_width"] or height < s["min_height"]:
-                    result["issues"].append(
-                        f"해상도 미달({width}×{height}, 최소: {s['min_width']}×{s['min_height']})")
-
-            # VFR 체크
-            if a_fps == 0 or (r_fps > 0 and abs(r_fps - a_fps) > 0.1):
-                result["vfr"] = True
-                result["issues"].append("VFR(가변 프레임레이트)")
-            else:
-                # CFR이지만 fps 기준 불일치
-                if a_fps > 0 and abs(a_fps - s["fps"]) > 0.5:
-                    result["issues"].append(
-                        f"프레임레이트 불일치({a_fps:.2f}fps, 권장: {s['fps']}fps)")
-
-            # time_base 오류
-            if st.get("time_base", "") == "1/90000":
-                result["dts_error"] = True
-                result["issues"].append("time_base 오류(1/90000)")
-
-        if st.get("codec_type") == "audio":
-            sr = int(st.get("sample_rate", 0))
-            ch = int(st.get("channels", 0))
-            if sr != s["audio_sr"]:
-                result["audio_ok"] = False
-                result["issues"].append(f"오디오 샘플레이트 {sr}Hz(권장 {s['audio_sr']}Hz)")
-            if ch < s["audio_ch"]:
-                result["audio_ok"] = False
-                result["issues"].append(f"오디오 모노(스테레오 필요)")
-
-    # ── 비트레이트 기준 체크 ───────────────────────
-    if result["bitrate"] > 0 and result["bitrate"] < s["bitrate"]:
-        result["issues"].append(
-            f"비트레이트 부족({result['bitrate']}kbps, 최소: {s['bitrate']}kbps)")
-
-    # ── DTS 역전 (URL은 네트워크 부하로 생략) ───────
     if not _is_url and check_dts(filepath):
         result["dts_error"] = True
         result["issues"].append("DTS 역전")
 
-    # ── Faststart (moov atom 위치) ─────────────────
-    if _is_url:
-        header = _fetch_head_bytes(filepath)
-        if header is None:
-            result["faststart"] = None   # 확인불가
-        else:
-            moov = header.find(b"moov")
-            mdat = header.find(b"mdat")
-            result["faststart"] = moov != -1 and (mdat == -1 or moov < mdat)
-            if not result["faststart"]:
-                result["issues"].append("faststart 없음(moov atom 위치 오류)")
-    else:
-        try:
-            with open(filepath, "rb") as f:
-                header = f.read(200000)
-            moov = header.find(b"moov")
-            mdat = header.find(b"mdat")
-            result["faststart"] = moov != -1 and (mdat == -1 or moov < mdat)
-            if not result["faststart"]:
-                result["issues"].append("faststart 없음(moov atom 위치 오류)")
-        except Exception:
-            result["issues"].append("파일 읽기 오류")
+    _check_faststart(filepath, result, _is_url)
 
+    logger.info("검수완료 [%s] 문제:%d건", filename, len(result["issues"]))
     return result
 
 
@@ -336,8 +375,11 @@ def convert_file(filepath, output_dir, settings=None):
         "-movflags", "+faststart",
         "-y", out_path
     ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   creationflags=_NO_WINDOW)
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                          creationflags=_NO_WINDOW)
+    if proc.returncode != 0:
+        err_msg = proc.stderr.decode("utf-8", errors="ignore")[-200:].strip()
+        raise RuntimeError(f"ffmpeg 변환 실패 [{fname}]: {err_msg}")
     return out_path
 
 

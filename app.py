@@ -5,7 +5,9 @@ try:
     from dotenv import load_dotenv; load_dotenv()
 except ImportError:
     pass
-from checker import check_file, save_excel, save_txt_report, convert_file, get_bin, REPORT_FILENAME, EXCEL_OK
+from checker import (check_file, save_excel, save_txt_report, convert_file,
+                     get_bin, load_settings, save_settings,
+                     REPORT_FILENAME, EXCEL_OK)
 
 LOG_FILENAME  = "LMS영상검수_로그.jsonl"   # 결과 JSON 백업 (Excel 실패해도 항상 기록)
 
@@ -23,6 +25,8 @@ class API:
         self._work_q     = queue.Queue()
         self._excel_lock = threading.Lock()   # Excel 동시 쓰기 방지
 
+    MAX_RESULTS = 500   # 메모리 누적 상한
+
     # ── 결과 저장 (Lock 보호 + JSONL 백업) ────────────────────
     def _save_result(self, result, report_path, sheet_name):
         # 1) JSONL 백업 (항상 먼저, 잠금 불필요)
@@ -32,6 +36,10 @@ class API:
                 f.write(json.dumps(result, ensure_ascii=False) + "\n")
         except Exception:
             pass
+
+        # 2) 메모리 상한 초과 시 가장 오래된 항목 제거
+        if len(self._results) >= self.MAX_RESULTS:
+            self._results.pop(0)
 
         # 2) Excel: 해당 시트 + 통합 시트에 동시 저장 (Lock으로 순차 처리)
         with self._excel_lock:
@@ -54,6 +62,14 @@ class API:
             "excel_ok":    EXCEL_OK,
         }
 
+    # ── 설정 조회 / 저장 ───────────────────────────────────────
+    def get_settings(self):
+        return load_settings()
+
+    def update_settings(self, new_settings):
+        ok = save_settings(new_settings)
+        return {"status": "ok" if ok else "fail"}
+
     # ── URL 단건 검수 ──────────────────────────────────────────
     def check_url(self, url):
         url = url.strip()
@@ -67,7 +83,7 @@ class API:
                 fname = url.split("?")[0].rstrip("/").split("/")[-1]
                 _window.evaluate_js(
                     f"Bridge.onAnalyzing({json.dumps(fname)}, 'url')")
-                result = check_file(url)
+                result = check_file(url, settings=load_settings())
                 self._results.append(result)
                 self._save_result(result, report_path, "URL검수")
                 _window.evaluate_js(
@@ -118,11 +134,12 @@ class API:
         report_path = os.path.join(REPORT_DIR, REPORT_FILENAME)
 
         def run():
+            s = load_settings()
             for fname in mp4s:
                 fpath = os.path.join(input_dir, fname)
                 _window.evaluate_js(
                     f"Bridge.onAnalyzing({json.dumps(fname)}, 'manual')")
-                result = check_file(fpath)
+                result = check_file(fpath, settings=s)
                 self._results.append(result)
                 self._save_result(result, report_path, "수동검수")
                 _window.evaluate_js(
@@ -139,14 +156,23 @@ class API:
         os.makedirs(output_dir, exist_ok=True)
 
         def run():
-            total = len(filepaths)
+            total   = len(filepaths)
+            success = 0
+            errors  = []
+            s = load_settings()
             for i, fpath in enumerate(filepaths):
                 fname = os.path.basename(fpath)
                 _window.evaluate_js(
                     f"Bridge.onConverting({json.dumps(fname)}, {i+1}, {total})")
-                convert_file(fpath, output_dir)
+                try:
+                    convert_file(fpath, output_dir, settings=s)
+                    success += 1
+                except Exception as e:
+                    errors.append({"fname": fname, "msg": str(e)})
+                    _window.evaluate_js(
+                        f"Bridge.onConvertError({json.dumps(fname)}, {json.dumps(str(e))})")
             _window.evaluate_js(
-                f"Bridge.onConvertDone({total}, {json.dumps(output_dir)})")
+                f"Bridge.onConvertDone({success}, {json.dumps(output_dir)}, {json.dumps(errors)})")
 
         threading.Thread(target=run, daemon=True).start()
         return {"status": "ok", "count": len(filepaths)}

@@ -153,6 +153,8 @@ input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color:
     </div>
   </div>
   <div class="header-right">
+    <button class="hbtn" onclick="emergencySave()" title="Excel 없이 현재 결과를 TSV 파일로 즉시 저장">💾 긴급저장</button>
+    <button class="hbtn" onclick="openSettings()" title="검수 기준값 설정">⚙ 설정</button>
   </div>
 </div>
 
@@ -417,6 +419,39 @@ input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color:
   </div>
 </div>
 
+
+<!-- ■ 설정 모달 -->
+<div id="modal-settings" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:10px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+    <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:18px">⚙ 검수 기준값 설정</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;font-size:13px">
+      <label>기준 FPS<br><input id="s-fps" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>최소 비트레이트 (kbps)<br><input id="s-bitrate" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>최소 가로 해상도 (px)<br><input id="s-minw" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>최소 세로 해상도 (px)<br><input id="s-minh" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>오디오 샘플레이트 (Hz)<br><input id="s-audiosr" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>오디오 채널 수<br><input id="s-audioch" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+    </div>
+    <div style="font-size:12px;color:var(--text-sub);margin:14px 0 4px">변환 설정</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;font-size:13px">
+      <label>변환 FPS<br><input id="s-cfps" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>변환 비트레이트 (kbps)<br><input id="s-cbitrate" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>오디오 비트레이트 (kbps)<br><input id="s-caudiobr" type="number" class="folder-input" style="width:100%;margin-top:4px"></label>
+      <label>프리셋<br>
+        <select id="s-preset" class="folder-input" style="width:100%;margin-top:4px">
+          <option value="ultrafast">ultrafast (빠름)</option>
+          <option value="fast">fast</option>
+          <option value="medium">medium (기본)</option>
+          <option value="slow">slow (고품질)</option>
+        </select>
+      </label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeSettings()">취소</button>
+      <button class="btn btn-primary" onclick="saveSettings()">💾 저장</button>
+    </div>
+  </div>
+</div>
 
 <!-- ■ 상태바 -->
 <div class="statusbar">
@@ -761,12 +796,25 @@ const Bridge = {
     setStatus(`변환 중 ${cur}/${total}: ${fname}`, false);
   },
 
-  onConvertDone(total, outputDir) {
+  onConvertError(fname, msg) {
+    setStatus(`❌ 변환 실패: ${fname}`, false);
+    // 해당 행에 실패 표시
+    const row = document.getElementById("row-" + CSS.escape(fname));
+    if (row) row.style.outline = "2px solid #ef4444";
+  },
+
+  onConvertDone(successCount, outputDir, errors) {
     document.getElementById("btn-scan").disabled    = false;
     document.getElementById("btn-convert").disabled = false;
     hideProgress("m");
-    setStatus(`변환 완료 · ${total}개 → ${outputDir}`, false);
-    alert(`${total}개 파일 변환 완료!\n저장 위치: ${outputDir}`);
+    if (errors && errors.length > 0) {
+      const failNames = errors.map(e => `• ${e.fname}\n  ${e.msg}`).join("\n");
+      setStatus(`변환 완료 · 성공 ${successCount}개 / 실패 ${errors.length}개`, false);
+      alert(`변환 결과\n✅ 성공: ${successCount}개\n❌ 실패: ${errors.length}개\n\n${failNames}`);
+    } else {
+      setStatus(`✅ 변환 완료 · ${successCount}개 → ${outputDir}`, false);
+      alert(`${successCount}개 파일 변환 완료!\n저장 위치: ${outputDir}`);
+    }
   },
 
   onStats(stats) {
@@ -862,6 +910,48 @@ function setStatus(text, watching) {
   const dot = document.getElementById("watch-dot");
   if (watching) dot.classList.add("green");
   else dot.classList.remove("green");
+}
+
+// ── 설정 모달 ──────────────────────────────────────────
+async function openSettings() {
+  const s = await pywebview.api.get_settings();
+  document.getElementById("s-fps").value      = s.fps;
+  document.getElementById("s-bitrate").value  = s.bitrate;
+  document.getElementById("s-minw").value     = s.min_width;
+  document.getElementById("s-minh").value     = s.min_height;
+  document.getElementById("s-audiosr").value  = s.audio_sr;
+  document.getElementById("s-audioch").value  = s.audio_ch;
+  document.getElementById("s-cfps").value     = s.conv_fps;
+  document.getElementById("s-cbitrate").value = s.conv_bitrate;
+  document.getElementById("s-caudiobr").value = s.conv_audio_br;
+  document.getElementById("s-preset").value   = s.conv_preset;
+  document.getElementById("modal-settings").style.display = "flex";
+}
+
+function closeSettings() {
+  document.getElementById("modal-settings").style.display = "none";
+}
+
+async function saveSettings() {
+  const newSettings = {
+    fps:          Number(document.getElementById("s-fps").value),
+    bitrate:      Number(document.getElementById("s-bitrate").value),
+    min_width:    Number(document.getElementById("s-minw").value),
+    min_height:   Number(document.getElementById("s-minh").value),
+    audio_sr:     Number(document.getElementById("s-audiosr").value),
+    audio_ch:     Number(document.getElementById("s-audioch").value),
+    conv_fps:     Number(document.getElementById("s-cfps").value),
+    conv_bitrate: Number(document.getElementById("s-cbitrate").value),
+    conv_audio_br:Number(document.getElementById("s-caudiobr").value),
+    conv_preset:  document.getElementById("s-preset").value,
+  };
+  const res = await pywebview.api.update_settings(newSettings);
+  if (res.status === "ok") {
+    closeSettings();
+    setStatus("✅ 설정 저장됨 (다음 검수부터 적용)", false);
+  } else {
+    alert("설정 저장 실패");
+  }
 }
 
 // ── 긴급저장: Python 없이 JS만으로 TSV 파일 다운로드 ──
